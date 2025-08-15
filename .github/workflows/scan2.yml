@@ -1,5 +1,5 @@
 
-name: Trivy Full
+name: Trivy Full Scan
 
 on:
   push:
@@ -28,8 +28,8 @@ jobs:
           path: ~/.local/bin/trivy-bin
           key: trivy-binary-v0.56.1-Linux-X64
 
-      - name: Trivy Filesystem Scan with Exit Code
-        run: trivy fs  --severity HIGH,CRITICAL --format json --output trivy-results/fs-scan.json .
+      - name: Trivy Filesystem Scan
+        run: trivy fs --severity HIGH,CRITICAL --format json --output trivy-results/fs-scan.json .
 
       - name: Trivy Repository Scan
         run: trivy repo --format json --output trivy-results/repo-scan.json .
@@ -40,8 +40,8 @@ jobs:
       - name: Trivy Secret Scan
         run: trivy fs --scanners secret --format json --output trivy-results/secret-scan.json .
 
-      - name: Trivy SBOM Generation
-        run: trivy sbom --format cyclonedx --output sbom/sbom.json .
+      - name: Trivy SBOM Generation (CycloneDX)
+        run: trivy fs --format cyclonedx --output sbom/sbom.json .
 
       - name: Convert Trivy JSON to Prometheus Metrics and Push
         run: |
