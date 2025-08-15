@@ -43,44 +43,42 @@ jobs:
       - name: Convert Trivy JSON to Prometheus Metrics and Push
         run: |
           pip install requests
-          echo '
-import json, os, requests
+          python3 <<EOF
+          import json, os, requests
 
-scan_dir = "trivy-results"
-pushgateway_url = "http://0f1dcdfc471d.mylabserver.com:9091/metrics/job/trivy_scan"
+          scan_dir = "trivy-results"
+          pushgateway_url = "http://0f1dcdfc471d.mylabserver.com:9091/metrics/job/trivy_scan"
 
-def convert_to_prometheus_metrics(file_path, scan_type):
-    with open(file_path, "r") as f:
-        try:
-            data = json.load(f)
-        except json.JSONDecodeError:
-            print(f"Skipping invalid JSON file: {file_path}")
-            return None
+          def convert_to_prometheus_metrics(file_path):
+              with open(file_path, 'r') as f:
+                  try:
+                      data = json.load(f)
+                  except json.JSONDecodeError:
+                      print(f"Skipping invalid JSON file: {file_path}")
+                      return None
 
-    metrics = []
-    severity_counts = {}
-    for result in data.get("Results", []):
-        for vuln in result.get("Vulnerabilities", []):
-            severity = vuln.get("Severity", "UNKNOWN")
-            severity_counts[severity] = severity_counts.get(severity, 0) + 1
+              metrics = []
+              severity_counts = {}
+              for result in data.get("Results", []):
+                  for vuln in result.get("Vulnerabilities", []):
+                      severity = vuln.get("Severity", "UNKNOWN")
+                      severity_counts[severity] = severity_counts.get(severity, 0) + 1
 
-    metrics.append("# HELP trivy_vulnerabilities_total Total number of vulnerabilities by severity")
-    metrics.append("# TYPE trivy_vulnerabilities_total gauge")
-    for severity, count in severity_counts.items():
-        metrics.append(f\'trivy_vulnerabilities_total{{scan_type="{scan_type}",severity="{severity}"}} {count}\')
+              metrics.append("# HELP trivy_vulnerabilities_total Total number of vulnerabilities by severity")
+              metrics.append("# TYPE trivy_vulnerabilities_total gauge")
+              for severity, count in severity_counts.items():
+                  metrics.append(f'trivy_vulnerabilities_total{{severity="{severity}"}} {count}')
 
-    return "\\n".join(metrics)
+              return "\\n".join(metrics)
 
-for filename in os.listdir(scan_dir):
-    if filename.endswith(".json"):
-        scan_type = filename.replace("-scan.json", "").replace(".json", "")
-        file_path = os.path.join(scan_dir, filename)
-        metrics_data = convert_to_prometheus_metrics(file_path, scan_type)
-        if metrics_data:
-            response = requests.post(pushgateway_url, data=metrics_data.encode("utf-8"))
-            print(f"Pushed metrics from {filename} with status code {response.status_code}")
-' > push_metrics.py
-          python3 push_metrics.py
+          for filename in os.listdir(scan_dir):
+              if filename.endswith(".json"):
+                  file_path = os.path.join(scan_dir, filename)
+                  metrics_data = convert_to_prometheus_metrics(file_path)
+                  if metrics_data:
+                      response = requests.post(pushgateway_url, data=metrics_data.encode('utf-8'))
+                      print(f"Pushed metrics from {filename} with status code {response.status_code}")
+          EOF
 
       - name: Show Summary of Trivy Scan Results
         run: |
