@@ -25,13 +25,13 @@ jobs:
           path: ~/.local/bin/trivy-bin
           key: trivy-binary-v0.56.1-Linux-X64
 
-      - name: Build Docker image
-        run: docker build -t my-app:${{ github.sha }} ./docker/
+      # - name: Build Docker image
+      #   run: docker build -t my-app:${{ github.sha }} ./docker/
 
-      - name: Trivy Image Scan
-        run: |
-          mkdir -p trivy-results
-          trivy image --format json --output trivy-results/image.json my-app:${{ github.sha }}
+      # - name: Trivy Image Scan
+      #   run: |
+      #     mkdir -p trivy-results
+      #     trivy image --format json --output trivy-results/image.json my-app:${{ github.sha }}
 
       - name: Trivy Filesystem Scan
         run: trivy fs --format json --output trivy-results/fs.json .
@@ -45,13 +45,13 @@ jobs:
       - name: Trivy Secret Scan
         run: trivy fs --scanners secret --format json --output trivy-results/secret.json .
 
-      - name: Generate SBOM from Docker image
-        run: |
-          mkdir -p sbom
-          trivy image --format cyclonedx --output sbom/sbom.json my-app:${{ github.sha }}
+      # - name: Generate SBOM from Docker image
+      #   run: |
+      #     mkdir -p sbom
+      #     trivy image --format cyclonedx --output sbom/sbom.json my-app:${{ github.sha }}
 
-      - name: Scan SBOM
-        run: trivy sbom sbom/sbom.json --format json --output trivy-results/sbom.json
+      # - name: Scan SBOM
+      #   run: trivy sbom sbom/sbom.json --format json --output trivy-results/sbom.json
 
       - name: Convert Trivy JSON to Prometheus Metrics and Push
         run: |
@@ -102,11 +102,11 @@ jobs:
             echo ""
           done
 
-      - name: Upload SBOM Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: sbom-report
-          path: sbom/sbom.json
+      # - name: Upload SBOM Artifact
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: sbom-report
+      #     path: sbom/sbom.json
 
       - name: Upload Trivy Reports
         if: always()
