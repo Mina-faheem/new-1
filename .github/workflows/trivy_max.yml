@@ -72,15 +72,21 @@ jobs:
               for severity, count in severity_counts.items():
                   metrics.append(f'trivy_vulnerabilities_total{{severity="{severity}"}} {count}')
 
-              return "\n".join(metrics)
+              return "\n".join(metrics) + "\n"  # Ensure newline at end
 
           for filename in os.listdir(scan_dir):
               if filename.endswith(".json"):
                   file_path = os.path.join(scan_dir, filename)
                   metrics_data = convert_to_prometheus_metrics(file_path)
                   if metrics_data:
-                      response = requests.post(pushgateway_url, data=metrics_data.encode('utf-8'))
+                      response = requests.post(
+                          pushgateway_url,
+                          data=metrics_data.encode('utf-8'),
+                          headers={'Content-Type': 'text/plain'}
+                      )
                       print(f"Pushed metrics from {filename} with status code {response.status_code}")
+                      if response.status_code != 200:
+                          print(f"Error response: {response.text}")
           EOF
 
       - name: Show Summary of Trivy Scan Results
@@ -90,7 +96,6 @@ jobs:
             echo "📄 Summary for $file:"
             jq '[.Results[]?.Vulnerabilities[]? | .Severity] | group_by(.) | map({(.[0]): length}) | add' "$file"
             echo ""
-          done
 
       - name: Upload Trivy Reports
         if: always()
