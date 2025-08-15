@@ -1,0 +1,65 @@
+
+name: Trivy Full Scan with Prometheus
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  trivy-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create results directory
+        run: mkdir -p trivy-results sbom
+
+      - name: Set up Trivy
+        uses: aquasecurity/setup-trivy@v0.2.1
+        with:
+          trivy-version: '0.56.1'
+
+      - name: Cache Trivy binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/bin/trivy-bin
+          key: trivy-binary-v0.56.1-Linux-X64
+
+      - name: Build Docker image
+        run: docker build -t my-app:${{ github.sha }} .
+
+      - name: Trivy Image Scan (JSON)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: image
+          image-ref: 'my-app:${{ github.sha }}'
+          format: json
+          output: trivy-results/image-scan.json
+          exit-code: 0
+          ignore-unfixed: true
+          vuln-type: os,library
+
+      - name: Parse Trivy JSON and Push Metrics to Prometheus
+        run: |
+          echo "🔄 Parsing Trivy JSON and pushing metrics to Prometheus..."
+          CRITICAL=$(jq '[.Results[].Vulnerabilities[] | select(.Severity=="CRITICAL")] | length' trivy-results/image-scan.json)
+          HIGH=$(jq '[.Results[].Vulnerabilities[] | select(.Severity=="HIGH")] | length' trivy-results/image-scan.json)
+          MEDIUM=$(jq '[.Results[].Vulnerabilities[] | select(.Severity=="MEDIUM")] | length' trivy-results/image-scan.json)
+          LOW=$(jq '[.Results[].Vulnerabilities[] | select(.Severity=="LOW")] | length' trivy-results/image-scan.json)
+
+          cat <<EOF | curl --data-binary @- http://0f1dcdfc471d.mylabserver.com:9091/metrics/job/trivy_scan
+          trivy_vulnerabilities_total{severity="CRITICAL"} $CRITICAL
+          trivy_vulnerabilities_total{severity="HIGH"} $HIGH
+          trivy_vulnerabilities_total{severity="MEDIUM"} $MEDIUM
+          trivy_vulnerabilities_total{severity="LOW"} $LOW
+          EOF
+
+      - name: Upload Trivy Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-reports
+          path: trivy-results/
