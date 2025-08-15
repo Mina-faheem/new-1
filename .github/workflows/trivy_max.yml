@@ -29,7 +29,7 @@ jobs:
           key: trivy-binary-v0.56.1-Linux-X64
 
       - name: Trivy Filesystem Scan
-        run: trivy fs --severity HIGH,CRITICAL --format json --output trivy-results/fs-scan.json .
+        run: trivy fs --severity HIGH,CRITICAL --format json --output trivy-results/trivy-scan.json .
 
       - name: Trivy Repository Scan
         run: trivy repo --format json --output trivy-results/repo-scan.json .
