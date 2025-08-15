@@ -28,14 +28,6 @@ jobs:
           path: ~/.local/bin/trivy-bin
           key: trivy-binary-v0.56.1-Linux-X64
 
-      # Optional: Build Docker image if needed
-      # - name: Build Docker image
-      #   run: docker build -t my-app:${{ github.sha }} .
-
-      # Optional: Trivy Image Scan
-      # - name: Trivy Image Scan
-      #   run: trivy image --format json --output trivy-results/image-scan.json my-app:${{ github.sha }}
-
       - name: Trivy Filesystem Scan
         run: trivy fs --format json --output trivy-results/fs-scan.json .
 
@@ -47,13 +39,6 @@ jobs:
 
       - name: Trivy Secret Scan
         run: trivy fs --scanners secret --format json --output trivy-results/secret-scan.json .
-
-      # Optional: Generate and scan SBOM
-      # - name: Generate SBOM from Docker image
-      #   run: trivy image --format cyclonedx --output sbom/sbom.json my-app:${{ github.sha }}
-
-      # - name: Scan SBOM
-      #   run: trivy sbom sbom/sbom.json --format json --output trivy-results/sbom-scan.json
 
       - name: Convert Trivy JSON to Prometheus Metrics and Push
         run: |
