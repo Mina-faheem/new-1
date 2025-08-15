@@ -42,24 +42,68 @@ jobs:
           ignore-unfixed: true
           vuln-type: os,library
 
-      - name: Parse Trivy JSON and Push Metrics to Prometheus
+      - name: Trivy Filesystem Scan (JSON)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: '.'
+          format: json
+          output: trivy-results/fs-scan.json
+          exit-code: 0
+
+      - name: Trivy Repository Scan (JSON)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: repo
+          scan-ref: '.'
+          format: json
+          output: trivy-results/repo-scan.json
+          exit-code: 0
+
+      - name: Trivy IaC Scan (JSON)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: config
+          scan-ref: '.'
+          format: json
+          output: trivy-results/iac-scan.json
+          exit-code: 0
+
+      - name: Trivy Secret Scan (JSON)
+        run: trivy fs --scanners secret --format json . > trivy-results/secret-scan.json
+
+      - name: Generate SBOM from Docker image
+        run: trivy image --format cyclonedx --output sbom/sbom.json my-app:${{ github.sha }}
+
+      - name: Scan SBOM (JSON)
+        run: trivy sbom sbom/sbom.json --format json > trivy-results/sbom-scan.json
+
+      - name: Push Trivy Metrics to Prometheus
         run: |
           echo "🔄 Parsing Trivy JSON and pushing metrics to Prometheus..."
-          CRITICAL=$(jq '[.Results[].Vulnerabilities[] | select(.Severity=="CRITICAL")] | length' trivy-results/image-scan.json)
-          HIGH=$(jq '[.Results[].Vulnerabilities[] | select(.Severity=="HIGH")] | length' trivy-results/image-scan.json)
-          MEDIUM=$(jq '[.Results[].Vulnerabilities[] | select(.Severity=="MEDIUM")] | length' trivy-results/image-scan.json)
-          LOW=$(jq '[.Results[].Vulnerabilities[] | select(.Severity=="LOW")] | length' trivy-results/image-scan.json)
 
-          cat <<EOF | curl --data-binary @- http://0f1dcdfc471d.mylabserver.com:9091/metrics/job/trivy_scan
-          trivy_vulnerabilities_total{severity="CRITICAL"} $CRITICAL
-          trivy_vulnerabilities_total{severity="HIGH"} $HIGH
-          trivy_vulnerabilities_total{severity="MEDIUM"} $MEDIUM
-          trivy_vulnerabilities_total{severity="LOW"} $LOW
-          EOF
+          for scan in image fs repo iac secret sbom; do
+            FILE="trivy-results/${scan}-scan.json"
+            if [ -f "$FILE" ]; then
+              CRITICAL=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' "$FILE")
+              HIGH=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="HIGH")] | length' "$FILE")
+              MEDIUM=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="MEDIUM")] | length' "$FILE")
+              LOW=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="LOW")] | length' "$FILE")
+
+              cat <<EOF | curl --data-binary @- http://0f1dcdfc471d.mylabserver.com:9091/metrics/job/trivy_scan/instance/${scan}
+trivy_vulnerabilities_total{scan_type="${scan}",severity="CRITICAL"} $CRITICAL
+trivy_vulnerabilities_total{scan_type="${scan}",severity="HIGH"} $HIGH
+trivy_vulnerabilities_total{scan_type="${scan}",severity="MEDIUM"} $MEDIUM
+trivy_vulnerabilities_total{scan_type="${scan}",severity="LOW"} $LOW
+EOF
+            fi
+          done
 
       - name: Upload Trivy Reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: trivy-reports
-          path: trivy-results/
+          path: |
+            trivy-results/
+            sbom/
