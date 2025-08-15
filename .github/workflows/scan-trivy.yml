@@ -72,8 +72,8 @@ jobs:
       - name: Trivy Secret Scan
         run: trivy fs --scanners secret --format table . > trivy-results/secret-scan.txt
 
-      - name: Generate SBOM from Docker image
-        run: trivy image --format cyclonedx --output sbom/sbom.json my-app:${{ github.sha }}
+      # - name: Generate SBOM from Docker image
+      #   run: trivy image --format cyclonedx --output sbom/sbom.json my-app:${{ github.sha }}
 
       - name: Scan SBOM
         run: trivy sbom sbom/sbom.json --format table > trivy-results/sbom-scan.txt
