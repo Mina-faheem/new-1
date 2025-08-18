@@ -42,65 +42,70 @@ jobs:
       - name: Trivy SBOM Generation (CycloneDX)
         run: trivy fs --format cyclonedx --output sbom/sbom.json .
 
-      - name: Convert Trivy JSON to Prometheus Metrics and Push (Final Fix)
+      
+      - name: Convert Full Trivy JSON to Prometheus Metrics and Push
         run: |
           pip install requests
           python3 <<EOF
-          import json, os, requests, time, hashlib
-
+          import json, os, requests
           scan_dir = "trivy-results"
-          scan_id = str(int(time.time()))
-          job_name = "trivy_scan"
-          pushgateway_base = f"http://0f1dcdfc471d.mylabserver.com:9091/metrics/job/{job_name}"
-
-          # Delete previous metrics for this job
-          requests.delete(pushgateway_base)
-
-          def generate_uid(vuln_id, target, source_label):
-              raw = f"{vuln_id}-{target}-{source_label}-{scan_id}"
-              return hashlib.md5(raw.encode()).hexdigest()
-
-          def convert_to_prometheus_metrics(file_path, source_label):
+          pushgateway_url = "http://0f1dcdfc471d.mylabserver.com:9091/metrics/job/trivy_scan"
+      
+          def convert_full_scan_to_prometheus(file_path):
               with open(file_path, 'r') as f:
                   try:
                       data = json.load(f)
                   except json.JSONDecodeError:
                       print(f"Skipping invalid JSON file: {file_path}")
                       return None
-
               metrics = []
               metrics.append("# HELP trivy_vulnerability_info Detailed vulnerability information")
               metrics.append("# TYPE trivy_vulnerability_info gauge")
-
+      
               for result in data.get("Results", []):
                   target = result.get("Target", "unknown_target")
                   for vuln in result.get("Vulnerabilities", []):
                       vuln_id = vuln.get("VulnerabilityID", "unknown_id")
+                      pkg_name = vuln.get("PkgName", "unknown_package")
+                      installed_version = vuln.get("InstalledVersion", "unknown_version")
+                      fixed_version = vuln.get("FixedVersion", "none")
                       severity = vuln.get("Severity", "UNKNOWN")
-                      title = vuln.get("Title", "No title").replace('"', "'")
-                      metric_uid = generate_uid(vuln_id, target, source_label)
-                      metrics.append(
-                          f'trivy_vulnerability_info{{id="{vuln_id}",severity="{severity}",title="{title}",target="{target}",source="{source_label}",scan_id="{scan_id}",metric_uid="{metric_uid}"}} 1'
+                      title = vuln.get("Title", "").replace('"', "'")
+                      description = vuln.get("Description", "").replace('"', "'")
+                      references = ",".join(vuln.get("References", []))
+      
+                      metric = (
+                          f'trivy_vulnerability_info{{'
+                          f'target="{target}",'
+                          f'vulnerability_id="{vuln_id}",'
+                          f'package="{pkg_name}",'
+                          f'installed_version="{installed_version}",'
+                          f'fixed_version="{fixed_version}",'
+                          f'severity="{severity}",'
+                          f'title="{title}",'
+                          f'description="{description}",'
+                          f'references="{references}"'
+                          f'}} 1'
                       )
-
+                      metrics.append(metric)
+      
               return "\n".join(metrics) + "\n"
-
+      
           for filename in os.listdir(scan_dir):
               if filename.endswith(".json"):
                   file_path = os.path.join(scan_dir, filename)
-                  source_label = filename.replace(".json", "")
-                  metrics_data = convert_to_prometheus_metrics(file_path, source_label)
+                  metrics_data = convert_full_scan_to_prometheus(file_path)
                   if metrics_data:
-                      push_url = f"{pushgateway_base}/source/{source_label}"
                       response = requests.post(
-                          push_url,
+                          pushgateway_url,
                           data=metrics_data.encode('utf-8'),
                           headers={'Content-Type': 'text/plain'}
                       )
-                      print(f"Pushed metrics from {filename} with status code {response.status_code}")
+                      print(f"Pushed detailed metrics from {filename} with status code {response.status_code}")
                       if response.status_code != 200:
                           print(f"Error response: {response.text}")
           EOF
+
 
       - name: Upload Trivy Reports
         if: always()
