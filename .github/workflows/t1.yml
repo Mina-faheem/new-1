@@ -1,0 +1,104 @@
+
+name: final-1 Trivy Full Scan with Prometheus
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  trivy-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create results directory
+        run: mkdir -p trivy-results sbom
+
+      - name: Set up Trivy
+        uses: aquasecurity/setup-trivy@v0.2.1
+        with:
+          trivy-version: '0.56.1'
+
+      - name: Cache Trivy binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/bin/trivy-bin
+          key: trivy-binary-v0.56.1-Linux-X64
+
+      - name: Trivy Filesystem Scan
+        run: trivy fs --severity HIGH,CRITICAL --format json --output trivy-results/fs-scan.json .
+
+      - name: Trivy Repository Scan
+        run: trivy repo --format json --output trivy-results/repo-scan.json .
+
+      - name: Trivy IaC Scan
+        run: trivy config --format json --output trivy-results/iac-scan.json .
+
+      - name: Trivy Secret Scan
+        run: trivy fs --scanners secret --format json --output trivy-results/secret-scan.json .
+
+      - name: Trivy SBOM Generation (CycloneDX)
+        run: trivy fs --format cyclonedx --output sbom/sbom.json .
+
+      - name: Convert Trivy JSON to Prometheus Metrics and Push (with Unique scan_id)
+        run: |
+          pip install requests
+          python3 <<EOF
+          import json, os, requests, time
+
+          scan_dir = "trivy-results"
+          pushgateway_base = "http://0f1dcdfc471d.mylabserver.com:9091/metrics/job/trivy_scan"
+          scan_id = str(int(time.time()))  # Unique label to prevent duplicate conflicts
+
+          def convert_to_prometheus_metrics(file_path, source_label, scan_id):
+              with open(file_path, 'r') as f:
+                  try:
+                      data = json.load(f)
+                  except json.JSONDecodeError:
+                      print(f"Skipping invalid JSON file: {file_path}")
+                      return None
+
+              metrics = []
+              metrics.append("# HELP trivy_vulnerability_info Detailed vulnerability information")
+              metrics.append("# TYPE trivy_vulnerability_info gauge")
+
+              for result in data.get("Results", []):
+                  target = result.get("Target", "unknown_target")
+                  for vuln in result.get("Vulnerabilities", []):
+                      vuln_id = vuln.get("VulnerabilityID", "unknown_id")
+                      severity = vuln.get("Severity", "UNKNOWN")
+                      title = vuln.get("Title", "No title").replace('"', "'")
+                      metrics.append(
+                          f'trivy_vulnerability_info{{id="{vuln_id}",severity="{severity}",title="{title}",target="{target}",source="{source_label}",scan_id="{scan_id}"}} 1'
+                      )
+
+              return "\n".join(metrics) + "\n"
+
+          for filename in os.listdir(scan_dir):
+              if filename.endswith(".json"):
+                  file_path = os.path.join(scan_dir, filename)
+                  source_label = filename.replace(".json", "")
+                  metrics_data = convert_to_prometheus_metrics(file_path, source_label, scan_id)
+                  if metrics_data:
+                      push_url = f"{pushgateway_base}/source/{source_label}"
+                      response = requests.post(
+                          push_url,
+                          data=metrics_data.encode('utf-8'),
+                          headers={'Content-Type': 'text/plain'}
+                      )
+                      print(f"Pushed metrics from {filename} with status code {response.status_code}")
+                      if response.status_code != 200:
+                          print(f"Error response: {response.text}")
+          EOF
+
+      - name: Upload Trivy Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-reports
+          path: |
+            trivy-results/
+            sbom/
