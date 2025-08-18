@@ -48,8 +48,12 @@ jobs:
           pip install requests
           python3 <<EOF
           import json, os, requests
+
           scan_dir = "trivy-results"
           pushgateway_url = "http://0f1dcdfc471d.mylabserver.com:9091/metrics/job/trivy_scan"
+
+          def sanitize(value):
+              return value.replace('"', "'").replace('\n', ' ').replace('\r', ' ').strip()
 
           def convert_full_scan_to_prometheus(file_path):
               with open(file_path, 'r') as f:
@@ -58,21 +62,22 @@ jobs:
                   except json.JSONDecodeError:
                       print(f"Skipping invalid JSON file: {file_path}")
                       return None
+
               metrics = []
               metrics.append("# HELP trivy_vulnerability_info Detailed vulnerability information")
               metrics.append("# TYPE trivy_vulnerability_info gauge")
 
               for result in data.get("Results", []):
-                  target = result.get("Target", "unknown_target")
+                  target = sanitize(result.get("Target", "unknown_target"))
                   for vuln in result.get("Vulnerabilities", []):
-                      vuln_id = vuln.get("VulnerabilityID", "unknown_id")
-                      pkg_name = vuln.get("PkgName", "unknown_package")
-                      installed_version = vuln.get("InstalledVersion", "unknown_version")
-                      fixed_version = vuln.get("FixedVersion", "none")
-                      severity = vuln.get("Severity", "UNKNOWN")
-                      title = vuln.get("Title", "").replace('"', "'")
-                      description = vuln.get("Description", "").replace('"', "'")
-                      references = ",".join(vuln.get("References", []))
+                      vuln_id = sanitize(vuln.get("VulnerabilityID", "unknown_id"))
+                      pkg_name = sanitize(vuln.get("PkgName", "unknown_package"))
+                      installed_version = sanitize(vuln.get("InstalledVersion", "unknown_version"))
+                      fixed_version = sanitize(vuln.get("FixedVersion", "none"))
+                      severity = sanitize(vuln.get("Severity", "UNKNOWN"))
+                      title = sanitize(vuln.get("Title", ""))
+                      description = sanitize(vuln.get("Description", ""))
+                      references = sanitize(",".join(vuln.get("References", [])))
 
                       metric = (
                           f'trivy_vulnerability_info{{'
