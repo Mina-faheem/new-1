@@ -1,4 +1,3 @@
-
 name: final Trivy Full Scan with Prometheus
 
 on:
@@ -93,13 +92,13 @@ jobs:
                           print(f"Error response: {response.text}")
           EOF
 
-      - name: Show Summary of Trivy Scan Results
-        run: |
-          echo "🔍 Trivy Scan Summary:"
-          for file in trivy-results/*.json; do
-            echo "📄 Summary for $file:"
-            jq '[.Results[]?.Vulnerabilities[]? | .Severity] | group_by(.) | map({(.[0]): length}) | add' "$file"
-            echo ""
+      # - name: Show Summary of Trivy Scan Results
+      #   run: |
+      #     echo "🔍 Trivy Scan Summary:"
+      #     for file in trivy-results/*.json; do
+      #       echo "📄 Summary for $file:"
+      #       jq '[.Results[]?.Vulnerabilities[]? | .Severity] | group_by(.) | map({(.[0]): length}) | add' "$file"
+      #       echo ""
 
       - name: Upload Trivy Reports
         if: always()
