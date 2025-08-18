@@ -1,4 +1,4 @@
-name: Trivy Full Scan with Prometheus +
+name: final
 
 on:
   push:
@@ -42,7 +42,7 @@ jobs:
       - name: Trivy SBOM Generation (CycloneDX)
         run: trivy fs --format cyclonedx --output sbom/sbom.json .
 
-      - name: Convert Trivy JSON to Prometheus Metrics and Push (with Cleanup)
+      - name: Convert Trivy JSON to Prometheus Metrics and Push (Final Fix)
         run: |
           pip install requests
           python3 <<EOF
@@ -50,9 +50,10 @@ jobs:
 
           scan_dir = "trivy-results"
           scan_id = str(int(time.time()))
-          pushgateway_base = f"http://0f1dcdfc471d.mylabserver.com:9091/metrics/job/trivy_scan_{scan_id}"
+          job_name = "trivy_scan"
+          pushgateway_base = f"http://0f1dcdfc471d.mylabserver.com:9091/metrics/job/{job_name}"
 
-          # Clean up previous metrics for this job
+          # Delete previous metrics for this job
           requests.delete(pushgateway_base)
 
           def generate_uid(vuln_id, target, source_label):
