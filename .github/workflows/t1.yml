@@ -1,5 +1,5 @@
 
-name: final Trivy
+name: final Trivy Full Scan with Prometheus
 
 on:
   push:
