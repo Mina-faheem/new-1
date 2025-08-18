@@ -1,3 +1,4 @@
+
 name: final
 
 on:
@@ -42,7 +43,6 @@ jobs:
       - name: Trivy SBOM Generation (CycloneDX)
         run: trivy fs --format cyclonedx --output sbom/sbom.json .
 
-      
       - name: Convert Full Trivy JSON to Prometheus Metrics and Push
         run: |
           pip install requests
@@ -50,7 +50,7 @@ jobs:
           import json, os, requests
           scan_dir = "trivy-results"
           pushgateway_url = "http://0f1dcdfc471d.mylabserver.com:9091/metrics/job/trivy_scan"
-      
+
           def convert_full_scan_to_prometheus(file_path):
               with open(file_path, 'r') as f:
                   try:
@@ -61,7 +61,7 @@ jobs:
               metrics = []
               metrics.append("# HELP trivy_vulnerability_info Detailed vulnerability information")
               metrics.append("# TYPE trivy_vulnerability_info gauge")
-      
+
               for result in data.get("Results", []):
                   target = result.get("Target", "unknown_target")
                   for vuln in result.get("Vulnerabilities", []):
@@ -73,7 +73,7 @@ jobs:
                       title = vuln.get("Title", "").replace('"', "'")
                       description = vuln.get("Description", "").replace('"', "'")
                       references = ",".join(vuln.get("References", []))
-      
+
                       metric = (
                           f'trivy_vulnerability_info{{'
                           f'target="{target}",'
@@ -88,9 +88,9 @@ jobs:
                           f'}} 1'
                       )
                       metrics.append(metric)
-      
+
               return "\n".join(metrics) + "\n"
-      
+
           for filename in os.listdir(scan_dir):
               if filename.endswith(".json"):
                   file_path = os.path.join(scan_dir, filename)
@@ -105,7 +105,6 @@ jobs:
                       if response.status_code != 200:
                           print(f"Error response: {response.text}")
           EOF
-
 
       - name: Upload Trivy Reports
         if: always()
