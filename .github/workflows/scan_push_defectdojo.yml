@@ -64,7 +64,8 @@ jobs:
             -H "Authorization: Token c0706cb1cb1984fea533b8a38ab3d16306777f9e" \
             -F "scan_type=Trivy Scan" \
             -F "file=@trivy-results/fs-scan.json" \
-            -F "engagement=1" \
+            -F "engagement_name=Local Terraform Scan" \
+            -F "product_name=MyTerraformProject" \
             -F "minimum_severity=Low" \
             -F "active=true" \
             -F "verified=true" \
