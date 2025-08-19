@@ -1,0 +1,164 @@
+
+name: defectdojo
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  trivy-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create results directory
+        run: mkdir -p trivy-results sbom
+
+      - name: Set up Trivy
+        uses: aquasecurity/setup-trivy@v0.2.1
+        with:
+          trivy-version: '0.56.1'
+
+      - name: Cache Trivy binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/bin/trivy-bin
+          key: trivy-binary-v0.56.1-Linux-X64
+
+      - name: Trivy Filesystem Scan
+        run: trivy fs --severity HIGH,CRITICAL --format json --output trivy-results/fs-scan.json .
+
+      - name: Trivy Repository Scan
+        run: trivy repo --format json --output trivy-results/repo-scan.json .
+
+      - name: Trivy IaC Scan
+        run: trivy config --format json --output trivy-results/iac-scan.json .
+
+      - name: Trivy Secret Scan
+        run: trivy fs --scanners secret --format json --output trivy-results/secret-scan.json .
+
+      - name: Trivy SBOM Generation (CycloneDX)
+        run: trivy fs --format cyclonedx --output sbom/sbom.json .
+
+      - name: Convert Full Trivy JSON to Prometheus Metrics and Push
+        run: |
+          pip install requests
+          python3 <<EOF
+          import json, os, requests
+
+          scan_dir = "trivy-results"
+          pushgateway_url = "http://0f1dcdfc471d.mylabserver.com:9091/metrics/job/trivy_scan"
+
+          def sanitize(value):
+              return value.replace('"', "'").replace('\n', ' ').replace('\r', ' ').strip()
+
+          def convert_full_scan_to_prometheus(file_path):
+              with open(file_path, 'r') as f:
+                  try:
+                      data = json.load(f)
+                  except json.JSONDecodeError:
+                      print(f"Skipping invalid JSON file: {file_path}")
+                      return None
+
+              metrics = []
+              metrics.append("# HELP trivy_vulnerability_info Detailed vulnerability information")
+              metrics.append("# TYPE trivy_vulnerability_info gauge")
+
+              for result in data.get("Results", []):
+                  target = sanitize(result.get("Target", "unknown_target"))
+                  for vuln in result.get("Vulnerabilities", []):
+                      vuln_id = sanitize(vuln.get("VulnerabilityID", "unknown_id"))
+                      pkg_name = sanitize(vuln.get("PkgName", "unknown_package"))
+                      installed_version = sanitize(vuln.get("InstalledVersion", "unknown_version"))
+                      fixed_version = sanitize(vuln.get("FixedVersion", "none"))
+                      severity = sanitize(vuln.get("Severity", "UNKNOWN"))
+                      title = sanitize(vuln.get("Title", ""))
+                      description = sanitize(vuln.get("Description", ""))
+                      references = sanitize(",".join(vuln.get("References", [])))
+
+                      metric = (
+                          f'trivy_vulnerability_info{{'
+                          f'target="{target}",'
+                          f'vulnerability_id="{vuln_id}",'
+                          f'package="{pkg_name}",'
+                          f'installed_version="{installed_version}",'
+                          f'fixed_version="{fixed_version}",'
+                          f'severity="{severity}",'
+                          f'title="{title}",'
+                          f'description="{description}",'
+                          f'references="{references}"'
+                          f'}} 1'
+                      )
+                      metrics.append(metric)
+
+              return "\n".join(metrics) + "\n"
+
+          for filename in os.listdir(scan_dir):
+              if filename.endswith(".json"):
+                  file_path = os.path.join(scan_dir, filename)
+                  metrics_data = convert_full_scan_to_prometheus(file_path)
+                  if metrics_data:
+                      response = requests.post(
+                          pushgateway_url,
+                          data=metrics_data.encode('utf-8'),
+                          headers={'Content-Type': 'text/plain'}
+                      )
+                      print(f"Pushed detailed metrics from {filename} with status code {response.status_code}")
+                      if response.status_code != 200:
+                          print(f"Error response: {response.text}")
+          EOF
+
+      - name: Upload Trivy Results to DefectDojo
+        run: |
+          pip install requests
+          python3 <<EOF
+          import requests, os
+
+          dojo_url = "http://0f1dcdfc471d.mylabserver.com:8080//api/v2/import-scan/"
+          api_key = os.getenv("049b9e0b9cc3907f2a24213f5b8ee99403f7c039")
+          engagement_id = os.getenv("1")
+
+          headers = {
+              "Authorization": f"Token {api_key}"
+          }
+
+          scan_files = [
+              "trivy-results/fs-scan.json",
+              "trivy-results/repo-scan.json",
+              "trivy-results/iac-scan.json",
+              "trivy-results/secret-scan.json"
+          ]
+
+          for scan_file in scan_files:
+              with open(scan_file, "rb") as f:
+                  files = {
+                      "file": (os.path.basename(scan_file), f, "application/json")
+                  }
+                  data = {
+                      "scan_type": "Trivy Scan",
+                      "engagement": engagement_id,
+                      "minimum_severity": "Low",
+                      "active": "true",
+                      "verified": "true",
+                      "auto_create_context": "true"
+                  }
+                  response = requests.post(dojo_url, headers=headers, files=files, data=data)
+                  print(f"Uploaded {scan_file} with status {response.status_code}")
+                  if response.status_code != 201:
+                      print(response.text)
+          EOF
+        env:
+          DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
+          DEFECTDOJO_ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
+
+      - name: Upload Trivy Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-reports
+          path: |
+            trivy-results/
+            sbom/
