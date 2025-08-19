@@ -1,5 +1,5 @@
 
-name: Trivy Full Scan 2
+name: t-2-d
 
 on:
   push:
@@ -28,52 +28,52 @@ jobs:
           path: ~/.local/bin/trivy-bin
           key: trivy-binary-v0.56.1-Linux-X64
 
-      - name: Trivy Filesystem Scan
+      - name: Trivy Filesystem Scan (JSON)
         uses: aquasecurity/trivy-action@0.28.0
         with:
           scan-type: fs
           scan-ref: '.'
-          format: table
-          output: trivy-results/fs-scan.txt
+          format: json
+          output: trivy-results/fs-scan.json
           exit-code: 0
 
-      - name: Trivy Repository Scan
+      - name: Trivy Repository Scan (JSON)
         uses: aquasecurity/trivy-action@0.28.0
         with:
           scan-type: repo
           scan-ref: '.'
-          format: table
-          output: trivy-results/repo-scan.txt
+          format: json
+          output: trivy-results/repo-scan.json
           exit-code: 0
 
-      - name: Trivy IaC Scan
+      - name: Trivy IaC Scan (JSON)
         uses: aquasecurity/trivy-action@0.28.0
         with:
           scan-type: config
           scan-ref: '.'
-          format: table
-          output: trivy-results/iac-scan.txt
+          format: json
+          output: trivy-results/iac-scan.json
           exit-code: 0
 
-      - name: Trivy Secret Scan
-        run: trivy fs --scanners secret --format table . > trivy-results/secret-scan.txt
+      - name: Trivy Secret Scan (JSON)
+        run: trivy fs --scanners secret --format json . > trivy-results/secret-scan.json
 
       - name: Upload Trivy Filesystem Scan to DefectDojo
         run: |
-          curl -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
-            -H "Authorization: Token $DEFECTDOJO_API_KEY" \
+          curl -X POST "${http://0f1dcdfc472c.mylabserver.com:8080/api/v2/import-scan/" \
+            -H "Authorization: Token ${c0706cb1cb1984fea533b8a38ab3d16306777f9e}" \
             -F "scan_type=Trivy Scan" \
-            -F "file=@trivy-results/fs-scan.txt" \
-            -F "engagement=$DEFECTDOJO_ENGAGEMENT_ID" \
+            -F "file=@trivy-results/fs-scan.json" \
+            -F "engagement=${1}" \
             -F "minimum_severity=Low" \
             -F "active=true" \
             -F "verified=true" \
             -F "scan_date=$(date +%F)" \
             -F "close_old_findings=true"
         env:
-          DEFECTDOJO_API_KEY: ${{ c0706cb1cb1984fea533b8a38ab3d16306777f9e }}
-          DEFECTDOJO_URL: ${{http://0f1dcdfc472c.mylabserver.com:8080/api/v2/import-scan/}}
-          DEFECTDOJO_ENGAGEMENT_ID: ${{1}}
+          DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
+          DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
+          DEFECTDOJO_ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
 
       - name: Upload Trivy Reports
         if: always()
@@ -89,20 +89,14 @@ jobs:
         run: |
           echo "🔍 Trivy Scan Summary"
           echo "======================"
-          echo "🛠️ Image Scan:"
-          cat trivy-results/image-scan.txt || echo "No image scan results found."
-
-          echo "📁 Filesystem Scan:"
-          cat trivy-results/fs-scan.txt || echo "No filesystem scan results found."
+          echo "🛠️ Filesystem Scan:"
+          jq '.' trivy-results/fs-scan.json || echo "No filesystem scan results found."
 
           echo "📦 Repository Scan:"
-          cat trivy-results/repo-scan.txt || echo "No repository scan results found."
+          jq '.' trivy-results/repo-scan.json || echo "No repository scan results found."
 
           echo "⚙️ IaC Scan:"
-          cat trivy-results/iac-scan.txt || echo "No IaC scan results found."
+          jq '.' trivy-results/iac-scan.json || echo "No IaC scan results found."
 
           echo "🔐 Secret Scan:"
-          cat trivy-results/secret-scan.txt || echo "No secret scan results found."
-
-          echo "📜 SBOM Scan:"
-          cat trivy-results/sbom-scan.txt || echo "No SBOM scan results found."
+          jq '.' trivy-results/secret-scan.json || echo "No secret scan results found."
