@@ -118,7 +118,7 @@ jobs:
           import requests, os
 
           dojo_url = "http://0f1dcdfc471d.mylabserver.com:8080//api/v2/import-scan/"
-          api_key = os.getenv("049b9e0b9cc3907f2a24213f5b8ee99403f7c039")
+          api_key = os.getenv("853ff4024bcc4f29694cb6410523635b730801f6")
           engagement_id = os.getenv("1")
 
           headers = {
