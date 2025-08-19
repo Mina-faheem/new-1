@@ -60,11 +60,11 @@ jobs:
 
       - name: Upload Trivy Filesystem Scan to DefectDojo
         run: |
-          curl -X POST "${http://0f1dcdfc472c.mylabserver.com:8080/api/v2/import-scan/}" \
-            -H "Authorization: Token ${c0706cb1cb1984fea533b8a38ab3d16306777f9e}" \
+          curl -X POST "http://0f1dcdfc472c.mylabserver.com:8080/api/v2/import-scan/" \
+            -H "Authorization: Token c0706cb1cb1984fea533b8a38ab3d16306777f9e" \
             -F "scan_type=Trivy Scan" \
             -F "file=@trivy-results/fs-scan.json" \
-            -F "engagement=${1}" \
+            -F "engagement=1" \
             -F "minimum_severity=Low" \
             -F "active=true" \
             -F "verified=true" \
