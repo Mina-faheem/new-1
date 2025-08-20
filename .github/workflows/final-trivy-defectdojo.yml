@@ -1,5 +1,5 @@
 
-name: final t-2-d
+name: t-2-d
 
 on:
   push:
@@ -58,20 +58,28 @@ jobs:
       - name: Trivy Secret Scan (JSON)
         run: trivy fs --scanners secret --format json . > trivy-results/secret-scan.json
 
-      - name: Upload All Trivy Scan Results to DefectDojo
+      - name: Upload All Trivy Scan Results to DefectDojo with Titles
         run: |
-          for scan_file in fs-scan repo-scan iac-scan secret-scan; do
-            echo "Uploading $scan_file.json to DefectDojo..."
+          declare -A titles=(
+            ["fs-scan"]="Filesystem Vulnerability Scan"
+            ["repo-scan"]="Repository Vulnerability Scan"
+            ["iac-scan"]="Infrastructure as Code Scan"
+            ["secret-scan"]="Secrets Exposure Scan"
+          )
+
+          for scan_file in "${!titles[@]}"; do
+            echo "Uploading ${titles[$scan_file]}..."
             curl -X POST "http://0f1dcdfc472c.mylabserver.com:8080/api/v2/import-scan/" \
-              -H "Authorization: Token c0706cb1cb1984fea533b8a38ab3d16306777f9e" \
-              -F "engagement=2" \
+              -H "Authorization: Token ${DEFECTDOJO_API_KEY}" \
+              -F "engagement=${DEFECTDOJO_ENGAGEMENT_ID}" \
               -F "scan_type=Trivy Scan" \
               -F "file=@trivy-results/${scan_file}.json" \
               -F "minimum_severity=Low" \
               -F "active=true" \
               -F "verified=true" \
               -F "scan_date=$(date +%F)" \
-              -F "close_old_findings=true"
+              -F "close_old_findings=true" \
+              -F "title=${titles[$scan_file]}"
           done
         env:
           DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
