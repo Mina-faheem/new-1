@@ -1,5 +1,5 @@
 
-name: t-2-d
+name: new t-2-d
 
 on:
   push:
@@ -60,9 +60,9 @@ jobs:
 
       - name: Upload Trivy Filesystem Scan to DefectDojo
         run: |
-          curl -X POST "http://0f1dcdfc472c.mylabserver.com:8080/api/v2/import-scan/" \
-            -H "Authorization: Token 544eba3cb469a39b07ecac658688227f4d1598aa" \
-            -F "engagement=2" \
+          curl -X POST "http://0f1dcdfc471c.mylabserver.com:8080/api/v2/import-scan/" \
+            -H "Authorization: Token fe477d8889ee40e56ed6345eba2c92417ff16855" \
+            -F "engagement=1" \
             -F "scan_type=Trivy Scan" \
             -F "file=@trivy-results/fs-scan.json" \
             -F "minimum_severity=Low" \
