@@ -84,7 +84,7 @@ jobs:
           EOF
         env:
           DEFECTDOJO_API_KEY: "c3a8dce8fbfbbf5a1c31c4854cda0934dd4734c6"
-          DEFECTDOJO_URL: "http://0f1dcdfc471c.mylabserver.com:8080/"
+          DEFECTDOJO_URL: "http://10f1dcdfc471c.mylabserver.com:8080/"
           DEFECTDOJO_ENGAGEMENT_ID:  "1" 
 
       - name: Upload Trivy Reports as Artifact
