@@ -1,0 +1,98 @@
+
+name: defectdojo
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  trivy-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create results directory
+        run: mkdir -p trivy-results sbom
+
+      - name: Set up Trivy
+        uses: aquasecurity/setup-trivy@v0.2.1
+        with:
+          trivy-version: '0.56.1'
+
+      - name: Cache Trivy binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/bin/trivy-bin
+          key: trivy-binary-v0.56.1-Linux-X64
+
+      - name: Trivy Filesystem Scan
+        run: trivy fs --severity HIGH,CRITICAL --format json --output trivy-results/fs-scan.json .
+
+      - name: Trivy Repository Scan
+        run: trivy repo --format json --output trivy-results/repo-scan.json .
+
+      - name: Trivy IaC Scan
+        run: trivy config --format json --output trivy-results/iac-scan.json .
+
+      - name: Trivy Secret Scan
+        run: trivy fs --scanners secret --format json --output trivy-results/secret-scan.json .
+
+      - name: Trivy SBOM Generation (CycloneDX)
+        run: trivy fs --format cyclonedx --output sbom/sbom.json .
+
+     
+
+      - name: Upload Trivy Results to DefectDojo
+        run: |
+          pip install requests
+          python3 <<EOF
+          import requests, os
+
+          dojo_url = "http://0f1dcdfc471c.mylabserver.com:8080//api/v2/import-scan/"
+          api_key = os.getenv("fe477d8889ee40e56ed6345eba2c92417ff16855")
+          engagement_id = os.getenv("1")
+
+          headers = {
+              "Authorization": f"Token {api_key}"
+          }
+
+          scan_files = [
+              "trivy-results/fs-scan.json",
+              "trivy-results/repo-scan.json",
+              "trivy-results/iac-scan.json",
+              "trivy-results/secret-scan.json"
+          ]
+
+          for scan_file in scan_files:
+              with open(scan_file, "rb") as f:
+                  files = {
+                      "file": (os.path.basename(scan_file), f, "application/json")
+                  }
+                  data = {
+                      "scan_type": "Trivy Scan",
+                      "engagement": engagement_id,
+                      "minimum_severity": "Low",
+                      "active": "true",
+                      "verified": "true",
+                      "auto_create_context": "true"
+                  }
+                  response = requests.post(dojo_url, headers=headers, files=files, data=data)
+                  print(f"Uploaded {scan_file} with status {response.status_code}")
+                  if response.status_code != 201:
+                      print(response.text)
+          EOF
+        env:
+          DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
+          DEFECTDOJO_ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
+
+      - name: Upload Trivy Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-reports
+          path: |
+            trivy-results/
+            sbom/
