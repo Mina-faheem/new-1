@@ -51,7 +51,7 @@ jobs:
           python3 <<EOF
           import requests, os
 
-          dojo_url = "http://0f1dcdfc471c.mylabserver.com:8080//api/v2/import-scan/"
+          dojo_url = "http://0f1dcdfc471c.mylabserver.com:8080/api/v2/import-scan/"
           api_key = os.getenv("c3a8dce8fbfbbf5a1c31c4854cda0934dd4734c6")
           engagement_id = os.getenv("1")
 
