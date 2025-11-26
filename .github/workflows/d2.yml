@@ -1,5 +1,4 @@
-
-name: trivy-to-defectdojo
+name: new t-2-d
 
 on:
   push:
@@ -22,108 +21,60 @@ jobs:
         with:
           trivy-version: '0.56.1'
 
-      - name: Trivy Filesystem Scan
-        run: trivy fs --severity HIGH,CRITICAL --format json --output trivy-results/fs-scan.json .
+      - name: Cache Trivy binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/bin/trivy-bin
+          key: trivy-binary-v0.56.1-Linux-X64
 
-      - name: Trivy Repository Scan
-        run: trivy repo --format json --output trivy-results/repo-scan.json .
+      - name: Trivy Filesystem Scan (JSON)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: '.'
+          format: json
+          output: trivy-results/fs-scan.json
+          exit-code: 0
 
-      - name: Trivy IaC Scan
-        run: trivy config --format json --output trivy-results/iac-scan.json .
+      - name: Trivy Repository Scan (JSON)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: repo
+          scan-ref: '.'
+          format: json
+          output: trivy-results/repo-scan.json
+          exit-code: 0
 
-      - name: Trivy Secret Scan
-        run: trivy fs --scanners secret --format json --output trivy-results/secret-scan.json .
+      - name: Trivy IaC Scan (JSON)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: config
+          scan-ref: '.'
+          format: json
+          output: trivy-results/iac-scan.json
+          exit-code: 0
 
-      - name: Trivy SBOM Generation (CycloneDX)
-        run: trivy fs --format cyclonedx --output sbom/sbom.json .
+      - name: Trivy Secret Scan (JSON)
+        run: trivy fs --scanners secret --format json . > trivy-results/secret-scan.json
 
-      - name: Ensure Engagement Exists, Upload Scans, and Close Engagement
+      - name: Upload Trivy Filesystem Scan to DefectDojo
         run: |
-          pip install requests
-          python3 <<EOF
-          import requests, os, sys
-
-          dojo_url = os.getenv("DEFECTDOJO_URL").rstrip("/")
-          api_key = os.getenv("DEFECTDOJO_API_KEY")
-          product_id = os.getenv("DEFECTDOJO_PRODUCT_ID")
-
-          headers = {"Authorization": f"Token {api_key}", "Content-Type": "application/json"}
-
-          # Step 1: Check engagements for the product
-          engagements_url = f"{dojo_url}/api/v2/engagements/?product={product_id}"
-          resp = requests.get(engagements_url, headers=headers)
-          if resp.status_code != 200:
-              print(f"❌ Failed to fetch engagements: {resp.text}")
-              sys.exit(1)
-
-          engagements = resp.json().get("results", [])
-          if engagements:
-              engagement_id = engagements[0]["id"]
-              print(f"✅ Found existing engagement: {engagement_id}")
-          else:
-              # Step 2: Create engagement if none exists
-              create_url = f"{dojo_url}/api/v2/engagements/"
-              payload = {
-                  "name": "Trivy Automated Scan",
-                  "product": int(product_id),
-                  "status": "In Progress",
-                  "target_start": "2025-11-26",
-                  "target_end": "2025-12-31"
-              }
-              create_resp = requests.post(create_url, headers=headers, json=payload)
-              if create_resp.status_code != 201:
-                  print(f"❌ Failed to create engagement: {create_resp.text}")
-                  sys.exit(1)
-              engagement_id = create_resp.json()["id"]
-              print(f"✅ Created new engagement: {engagement_id}")
-
-          # Step 3: Upload scans
-          upload_url = f"{dojo_url}/api/v2/import-scan/"
-          scan_files = {
-              "Trivy FS Scan": "trivy-results/fs-scan.json",
-              "Trivy Repo Scan": "trivy-results/repo-scan.json",
-              "Trivy IaC Scan": "trivy-results/iac-scan.json",
-              "Trivy Secret Scan": "trivy-results/secret-scan.json",
-              "CycloneDX SBOM": "sbom/sbom.json"
-          }
-
-          for scan_type, file_path in scan_files.items():
-              if not os.path.exists(file_path):
-                  print(f"⚠️ File {file_path} not found, skipping.")
-                  continue
-
-              with open(file_path, "rb") as f:
-                  files = {"file": (os.path.basename(file_path), f, "application/json")}
-                  data = {
-                      "scan_type": scan_type,
-                      "engagement": engagement_id,
-                      "minimum_severity": "Low",
-                      "active": "true",
-                      "verified": "true",
-                      "auto_create_context": "true"
-                  }
-                  response = requests.post(upload_url, headers={"Authorization": f"Token {api_key}"}, files=files, data=data)
-                  print(f"📤 Uploaded {scan_type} → Status {response.status_code}")
-                  if response.status_code != 201:
-                      print(f"❌ Error: {response.text}")
-                      sys.exit(1)
-
-          # Step 4: Close engagement
-          close_url = f"{dojo_url}/api/v2/engagements/{engagement_id}/"
-          close_payload = {"status": "Completed"}
-          close_resp = requests.patch(close_url, headers=headers, json=close_payload)
-          if close_resp.status_code == 200:
-              print(f"✅ Engagement {engagement_id} closed successfully.")
-          else:
-              print(f"❌ Failed to close engagement: {close_resp.text}")
-              sys.exit(1)
-          EOF
+          curl -X POST "http://0f1dcdfc471c.mylabserver.com:8080/api/v2/import-scan/" \
+            -H "Authorization: Token c3a8dce8fbfbbf5a1c31c4854cda0934dd4734c6" \
+            -F "engagement=2" \
+            -F "scan_type=Trivy Scan" \
+            -F "file=@trivy-results/fs-scan.json" \
+            -F "minimum_severity=Low" \
+            -F "active=true" \
+            -F "verified=true" \
+            -F "scan_date=$(date +%F)" \
+            -F "close_old_findings=true"
         env:
-          DEFECTDOJO_API_KEY: "c3a8dce8fbfbbf5a1c31c4854cda0934dd4734c6"
-          DEFECTDOJO_URL: "http://0f1dcdfc471c.mylabserver.com:8080/"
-          DEFECTDOJO_PRODUCT_ID: "1"
+          DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
+          DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
+          DEFECTDOJO_ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
 
-      - name: Upload Trivy Reports as Artifact
+      - name: Upload Trivy Reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -131,3 +82,16 @@ jobs:
           path: |
             trivy-results/
             sbom/
+      - name: Summarize Trivy Scan Results
+        if: always()
+        run: |
+          echo "🔍 Trivy Scan Summary"
+          echo "======================"
+          echo "🛠️ Filesystem Scan:"
+          jq '.' trivy-results/fs-scan.json || echo "No filesystem scan results found."
+          echo "📦 Repository Scan:"
+          jq '.' trivy-results/repo-scan.json || echo "No repository scan results found."
+          echo "⚙️ IaC Scan:"
+          jq '.' trivy-results/iac-scan.json || echo "No IaC scan results found."
+          echo "🔐 Secret Scan:"
+          jq '.' trivy-results/secret-scan.json || echo "No secret scan results found."
